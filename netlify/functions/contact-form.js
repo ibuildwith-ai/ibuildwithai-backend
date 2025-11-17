@@ -102,9 +102,9 @@ exports.handler = async (event, context) => {
     });
 
     // Prepare email content
-    const emailSubject = 'New Contact Form Submission - iCodeWith.ai';
+    const emailSubject = 'New Contact Form Submission - iBuildWith.ai';
     const emailContent = `
-New contact form submission from iCodeWith.ai
+New contact form submission from iBuildWith.ai
 
 Name: ${firstName} ${lastName}
 Email: ${email}
@@ -116,12 +116,12 @@ IP Address: ${clientIP}
 User Agent: ${event.headers['user-agent'] || 'Not available'}
 
 ---
-This email was sent from the iCodeWith.ai contact form.
+This email was sent from the iBuildWith.ai contact form.
     `.trim();
 
     // Send email
     const { data, error } = await resend.emails.send({
-      from: 'contact@send.icodewith.ai',
+      from: 'contact@send.ibuildwith.ai',
       to: [process.env.RECIPIENT_EMAIL],
       subject: emailSubject,
       text: emailContent

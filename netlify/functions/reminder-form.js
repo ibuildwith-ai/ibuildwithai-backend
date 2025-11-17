@@ -116,7 +116,7 @@ exports.handler = async (event, context) => {
     });
 
     // Prepare email content for user (with admin BCC)
-    const emailSubject = 'Your iCodeWith.ai reminder is set!';
+    const emailSubject = 'Your iBuildWith.ai reminder is set!';
     const emailContent = `Hi ${firstName},
 
 Your reminder is set! Here are the details:
@@ -126,16 +126,16 @@ Your email: ${email}
 
 The page you requested a reminder for:
 
-${(pageTitle || 'Page title not available').replace('| iCodeWith.ai', '').trim()}
+${(pageTitle || 'Page title not available').replace('| iBuildWith.ai', '').trim()}
 ${pageUrl || 'Page URL not available'}
 
-Learn more at iCodeWith.ai`;
+Learn more at iBuildWith.ai`;
 
     console.log(`[REMINDER-FORM] Sending reminder confirmation email to: ${email}`);
 
     // Send email to user with BCC to admin
     const { data, error } = await resend.emails.send({
-      from: 'contact@send.icodewith.ai',
+      from: 'contact@send.ibuildwith.ai',
       to: [email],
       bcc: [process.env.REMINDER_ADMIN_EMAIL],
       subject: emailSubject,
