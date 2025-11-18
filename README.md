@@ -1,6 +1,6 @@
-# iCodeWith.ai Backend
+# iBuildWith.ai Backend
 
-Backend services for iCodeWith.ai website.
+Backend services for iBuildWith.ai website.
 
 ## Services
 
@@ -36,9 +36,9 @@ Required in Netlify dashboard:
 ## CORS Configuration
 
 The function accepts requests from:
-- https://www.icodewith.ai
-- https://next.icodewith.ai  
-- https://icodewith.ai
+- https://www.ibuildwith.ai
+- https://next.ibuildwith.ai
+- https://ibuildwith.ai
 
 ## Rate Limiting
 
