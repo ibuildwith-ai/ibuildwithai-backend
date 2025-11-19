@@ -4,9 +4,13 @@ const { Resend } = require('resend');
 const rateLimitStore = new Map();
 
 exports.handler = async (event, context) => {
-  // CORS headers for all responses
+  // CORS headers for all responses - Allow both www and non-www domains
+  const origin = event.headers.origin || event.headers.Origin;
+  const allowedOrigins = ['https://ibuildwith.ai', 'https://www.ibuildwith.ai'];
+  const corsOrigin = allowedOrigins.includes(origin) ? origin : 'https://ibuildwith.ai';
+
   const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': corsOrigin,
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Max-Age': '86400'
@@ -37,21 +41,21 @@ exports.handler = async (event, context) => {
     const clientIP = event.headers['client-ip'] || event.headers['x-forwarded-for'] || 'unknown';
     const now = Date.now();
     const windowMs = 60 * 60 * 1000; // 1 hour
-    const maxRequests = 5;
+    const maxRequests = 3; // Reduced from 5 for better security
 
     console.log(`[REMINDER-FORM] Processing request from IP: ${clientIP}`);
 
     if (rateLimitStore.has(clientIP)) {
       const { count, firstRequest } = rateLimitStore.get(clientIP);
-      
+
       if (now - firstRequest < windowMs) {
         if (count >= maxRequests) {
           console.log(`[REMINDER-FORM] Rate limit exceeded for IP: ${clientIP}`);
           return {
             statusCode: 429,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              error: 'Too many requests. Please wait before submitting again.' 
+            body: JSON.stringify({
+              error: 'Too many requests. Please wait before submitting again.'
             })
           };
         }
@@ -66,37 +70,37 @@ exports.handler = async (event, context) => {
 
     // Parse form data
     const formData = JSON.parse(event.body);
-    console.log('[REMINDER-FORM] Form data received:', { 
-      firstName: formData.firstName, 
-      lastName: formData.lastName, 
+    console.log('[REMINDER-FORM] Form data received:', {
+      firstName: formData.firstName,
+      lastName: formData.lastName,
       email: formData.email,
       pageUrl: formData.pageUrl ? formData.pageUrl.substring(0, 100) + '...' : 'not provided',
       pageTitle: formData.pageTitle || 'not provided'
     });
-    
+
     // Validate required fields
     const { firstName, lastName, email, pageUrl, pageTitle } = formData;
-    
+
     if (!firstName || !lastName || !email) {
       console.log('[REMINDER-FORM] Missing required fields');
       return {
         statusCode: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Missing required fields: firstName, lastName, email' 
+        body: JSON.stringify({
+          error: 'Missing required fields: firstName, lastName, email'
         })
       };
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Basic email validation - requires valid TLD (min 2 characters)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       console.log(`[REMINDER-FORM] Invalid email format: ${email}`);
       return {
         statusCode: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Invalid email format' 
+        body: JSON.stringify({
+          error: 'Invalid email format'
         })
       };
     }
@@ -147,8 +151,8 @@ Learn more at iBuildWith.ai`;
       return {
         statusCode: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Failed to send email. Please try again later.' 
+        body: JSON.stringify({
+          error: 'Failed to send email. Please try again later.'
         })
       };
     }
@@ -160,20 +164,20 @@ Learn more at iBuildWith.ai`;
     return {
       statusCode: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         success: true,
-        message: 'Your reminder has been set successfully!' 
+        message: 'Your reminder has been set successfully!'
       })
     };
 
   } catch (error) {
     console.error('[REMINDER-FORM] Function error:', error);
-    
+
     return {
       statusCode: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        error: 'Internal server error. Please try again later.' 
+      body: JSON.stringify({
+        error: 'Internal server error. Please try again later.'
       })
     };
   }
