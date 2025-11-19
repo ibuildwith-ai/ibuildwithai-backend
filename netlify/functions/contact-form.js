@@ -4,9 +4,9 @@ const { Resend } = require('resend');
 const rateLimitStore = new Map();
 
 exports.handler = async (event, context) => {
-  // CORS headers for all responses
+  // CORS headers for all responses - Restricted to domain only
   const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'https://ibuildwith.ai',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Max-Age': '86400'
@@ -35,18 +35,18 @@ exports.handler = async (event, context) => {
     const clientIP = event.headers['client-ip'] || event.headers['x-forwarded-for'] || 'unknown';
     const now = Date.now();
     const windowMs = 60 * 60 * 1000; // 1 hour
-    const maxRequests = 5;
+    const maxRequests = 3; // Reduced from 5 for better security
 
     if (rateLimitStore.has(clientIP)) {
       const { count, firstRequest } = rateLimitStore.get(clientIP);
-      
+
       if (now - firstRequest < windowMs) {
         if (count >= maxRequests) {
           return {
             statusCode: 429,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              error: 'Too many requests. Please wait before submitting again.' 
+            body: JSON.stringify({
+              error: 'Too many requests. Please wait before submitting again.'
             })
           };
         }
@@ -61,28 +61,28 @@ exports.handler = async (event, context) => {
 
     // Parse form data
     const formData = JSON.parse(event.body);
-    
+
     // Validate required fields
     const { firstName, lastName, email, reason, message } = formData;
-    
+
     if (!firstName || !lastName || !email || !message) {
       return {
         statusCode: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Missing required fields: firstName, lastName, email, message' 
+        body: JSON.stringify({
+          error: 'Missing required fields: firstName, lastName, email, message'
         })
       };
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Basic email validation - requires valid TLD (min 2 characters)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       return {
         statusCode: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Invalid email format' 
+        body: JSON.stringify({
+          error: 'Invalid email format'
         })
       };
     }
@@ -132,8 +132,8 @@ This email was sent from the iBuildWith.ai contact form.
       return {
         statusCode: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: 'Failed to send email. Please try again later.' 
+        body: JSON.stringify({
+          error: 'Failed to send email. Please try again later.'
         })
       };
     }
@@ -144,20 +144,20 @@ This email was sent from the iBuildWith.ai contact form.
     return {
       statusCode: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         success: true,
-        message: 'Your message has been sent successfully!' 
+        message: 'Your message has been sent successfully!'
       })
     };
 
   } catch (error) {
     console.error('Function error:', error);
-    
+
     return {
       statusCode: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        error: 'Internal server error. Please try again later.' 
+      body: JSON.stringify({
+        error: 'Internal server error. Please try again later.'
       })
     };
   }
