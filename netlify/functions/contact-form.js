@@ -4,9 +4,13 @@ const { Resend } = require('resend');
 const rateLimitStore = new Map();
 
 exports.handler = async (event, context) => {
-  // CORS headers for all responses - Restricted to domain only
+  // CORS headers for all responses - Allow both www and non-www domains
+  const origin = event.headers.origin || event.headers.Origin;
+  const allowedOrigins = ['https://ibuildwith.ai', 'https://www.ibuildwith.ai'];
+  const corsOrigin = allowedOrigins.includes(origin) ? origin : 'https://ibuildwith.ai';
+
   const corsHeaders = {
-    'Access-Control-Allow-Origin': 'https://ibuildwith.ai',
+    'Access-Control-Allow-Origin': corsOrigin,
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Max-Age': '86400'

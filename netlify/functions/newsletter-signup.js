@@ -17,9 +17,13 @@ setInterval(() => {
 }, RATE_LIMIT_WINDOW);
 
 exports.handler = async (event, context) => {
-    // Enable CORS - Restricted to domain only
+    // Enable CORS - Allow both www and non-www domains
+    const origin = event.headers.origin || event.headers.Origin;
+    const allowedOrigins = ['https://ibuildwith.ai', 'https://www.ibuildwith.ai'];
+    const corsOrigin = allowedOrigins.includes(origin) ? origin : 'https://ibuildwith.ai';
+
     const headers = {
-        'Access-Control-Allow-Origin': 'https://ibuildwith.ai',
+        'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS'
     };
