@@ -146,13 +146,17 @@ exports.handler = async (event, context) => {
                 } else {
                     // Step 2: Add subscriber to group
                     const subscriberId = subscriberData.data.id;
-                    const addToGroupResponse = await fetch(`https://api.sender.net/v2/subscribers/${subscriberId}/groups/${process.env.SENDER_GROUP_ID}`, {
+                    const addToGroupResponse = await fetch('https://api.sender.net/v2/subscribers/add-group', {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${process.env.SENDER_API_TOKEN}`,
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'
                         },
+                        body: JSON.stringify({
+                            subscriber_id: subscriberId,
+                            group_id: process.env.SENDER_GROUP_ID
+                        }),
                         signal: AbortSignal.timeout(5000) // 5 second timeout
                     });
 
