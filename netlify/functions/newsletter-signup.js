@@ -1,5 +1,4 @@
 const { Resend } = require('resend');
-const mailchimp = require('@mailchimp/mailchimp_marketing');
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour
@@ -114,35 +113,63 @@ exports.handler = async (event, context) => {
             text: emailContent,
         });
 
-        // 2. Add to Mailchimp
-        if (process.env.MAILCHIMP_API_KEY && process.env.MAILCHIMP_SERVER_PREFIX && process.env.MAILCHIMP_LIST_ID) {
-            mailchimp.setConfig({
-                apiKey: process.env.MAILCHIMP_API_KEY,
-                server: process.env.MAILCHIMP_SERVER_PREFIX,
-            });
-
+        // 2. Add to Sender.net
+        if (process.env.SENDER_API_TOKEN && process.env.SENDER_GROUP_ID) {
             try {
-                await mailchimp.lists.addListMember(process.env.MAILCHIMP_LIST_ID, {
-                    email_address: email,
-                    status: 'subscribed',
-                    merge_fields: {
-                        FNAME: firstName,
-                        LNAME: lastName
-                    }
+                // Step 1: Add subscriber to Sender.net
+                const addSubscriberResponse = await fetch('https://api.sender.net/v2/subscribers', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.SENDER_API_TOKEN}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        firstname: firstName,
+                        lastname: lastName
+                    }),
+                    signal: AbortSignal.timeout(5000) // 5 second timeout
                 });
-            } catch (mcError) {
-                // Handle "Member Exists" error (400)
-                if (mcError.status === 400 && mcError.response && mcError.response.body.title === 'Member Exists') {
-                    console.log(`Email ${email} is already subscribed to Mailchimp.`);
-                    // We consider this a success from the user's perspective
+
+                const subscriberData = await addSubscriberResponse.json();
+
+                if (!addSubscriberResponse.ok) {
+                    // Check if subscriber already exists
+                    if (addSubscriberResponse.status === 422 ||
+                        (subscriberData.message && subscriberData.message.includes('already exists'))) {
+                        console.log(`Email ${email} is already subscribed to Sender.net.`);
+                        // Subscriber exists, we still consider this a success
+                    } else {
+                        throw new Error(`Sender.net API error: ${subscriberData.message || addSubscriberResponse.statusText}`);
+                    }
                 } else {
-                    console.error('Mailchimp Error:', mcError);
-                    // We log the error but don't fail the request if the email notification succeeded
-                    // Or we could return a warning. For now, let's proceed as success but log it.
+                    // Step 2: Add subscriber to group
+                    const subscriberId = subscriberData.data.id;
+                    const addToGroupResponse = await fetch(`https://api.sender.net/v2/subscribers/${subscriberId}/groups/${process.env.SENDER_GROUP_ID}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${process.env.SENDER_API_TOKEN}`,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        signal: AbortSignal.timeout(5000) // 5 second timeout
+                    });
+
+                    if (!addToGroupResponse.ok) {
+                        const groupData = await addToGroupResponse.json();
+                        console.error('Sender.net group assignment error:', groupData);
+                        // Log but don't fail - subscriber was created successfully
+                    } else {
+                        console.log(`Successfully added ${email} to Sender.net group ${process.env.SENDER_GROUP_ID}`);
+                    }
                 }
+            } catch (senderError) {
+                console.error('Sender.net Error:', senderError);
+                // We log the error but don't fail the request if the email notification succeeded
             }
         } else {
-            console.warn('Mailchimp environment variables not set. Skipping Mailchimp integration.');
+            console.warn('Sender.net environment variables not set. Skipping Sender.net integration.');
         }
 
         return {
