@@ -144,9 +144,10 @@ exports.handler = async (event, context) => {
         }
 
         // 2. Send Notification Email via Resend with Sender.net status
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        try {
+            const resend = new Resend(process.env.RESEND_API_KEY);
 
-        let emailContent = `
+            let emailContent = `
       New Newsletter Signup:
 
       First Name: ${firstName}
@@ -157,27 +158,31 @@ exports.handler = async (event, context) => {
 
       Sender.net Status: ${senderStatus}`;
 
-        if (senderStatus === 'failed') {
-            emailContent += `
+            if (senderStatus === 'failed') {
+                emailContent += `
 
       ⚠️ ACTION REQUIRED: Failed to add subscriber to Sender.net
       Please manually add this subscriber to your Sender.net list.
 
       Error Details: ${senderErrorDetails}`;
-        } else if (senderStatus === 'already_exists') {
-            emailContent += `
+            } else if (senderStatus === 'already_exists') {
+                emailContent += `
 
       Note: This email already exists in Sender.net.`;
-        }
+            }
 
-        await resend.emails.send({
-            from: 'contact@send.ibuildwith.ai',
-            to: process.env.RECIPIENT_EMAIL,
-            subject: senderStatus === 'failed'
-                ? `⚠️ Newsletter Signup - MANUAL ADD REQUIRED - ${firstName} ${lastName}`
-                : `New Newsletter Signup from ${firstName} ${lastName}`,
-            text: emailContent,
-        });
+            await resend.emails.send({
+                from: 'contact@send.ibuildwith.ai',
+                to: process.env.RECIPIENT_EMAIL,
+                subject: senderStatus === 'failed'
+                    ? `⚠️ Newsletter Signup - MANUAL ADD REQUIRED - ${firstName} ${lastName}`
+                    : `New Newsletter Signup from ${firstName} ${lastName}`,
+                text: emailContent,
+            });
+        } catch (resendError) {
+            console.error('Resend notification email error:', resendError);
+            // Don't fail the request if notification email fails
+        }
 
         return {
             statusCode: 200,
