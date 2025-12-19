@@ -93,30 +93,12 @@ exports.handler = async (event, context) => {
             };
         }
 
-        // 1. Send Notification Email via Resend
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        // 1. Add to Sender.net and track status
+        let senderStatus = 'success';
+        let senderErrorDetails = '';
 
-        const emailContent = `
-      New Newsletter Signup:
-      
-      First Name: ${firstName}
-      Last Name: ${lastName}
-      Email: ${email}
-      
-      Date: ${new Date().toLocaleString()}
-    `;
-
-        await resend.emails.send({
-            from: 'contact@send.ibuildwith.ai', // Ensure this domain is verified in Resend
-            to: process.env.RECIPIENT_EMAIL,
-            subject: `New Newsletter Signup from ${firstName} ${lastName}`,
-            text: emailContent,
-        });
-
-        // 2. Add to Sender.net
-        if (process.env.SENDER_API_TOKEN && process.env.SENDER_GROUP_ID) {
+        if (process.env.SENDER_API_TOKEN) {
             try {
-                // Step 1: Add subscriber to Sender.net
                 const addSubscriberResponse = await fetch('https://api.sender.net/v2/subscribers', {
                     method: 'POST',
                     headers: {
@@ -139,42 +121,63 @@ exports.handler = async (event, context) => {
                     if (addSubscriberResponse.status === 422 ||
                         (subscriberData.message && subscriberData.message.includes('already exists'))) {
                         console.log(`Email ${email} is already subscribed to Sender.net.`);
-                        // Subscriber exists, we still consider this a success
+                        senderStatus = 'already_exists';
                     } else {
+                        senderStatus = 'failed';
+                        senderErrorDetails = `Status: ${addSubscriberResponse.status}, Message: ${subscriberData.message || addSubscriberResponse.statusText}`;
                         throw new Error(`Sender.net API error: ${subscriberData.message || addSubscriberResponse.statusText}`);
                     }
                 } else {
-                    // Step 2: Add subscriber to group
-                    const subscriberId = subscriberData.data.id;
-                    const addToGroupResponse = await fetch('https://api.sender.net/v2/subscribers/add-group', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${process.env.SENDER_API_TOKEN}`,
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            subscriber_id: subscriberId,
-                            group_id: process.env.SENDER_GROUP_ID
-                        }),
-                        signal: AbortSignal.timeout(5000) // 5 second timeout
-                    });
-
-                    if (!addToGroupResponse.ok) {
-                        const groupData = await addToGroupResponse.json();
-                        console.error('Sender.net group assignment error:', groupData);
-                        // Log but don't fail - subscriber was created successfully
-                    } else {
-                        console.log(`Successfully added ${email} to Sender.net group ${process.env.SENDER_GROUP_ID}`);
-                    }
+                    console.log(`Successfully added ${email} to Sender.net`);
+                    senderStatus = 'success';
                 }
             } catch (senderError) {
                 console.error('Sender.net Error:', senderError);
-                // We log the error but don't fail the request if the email notification succeeded
+                senderStatus = 'failed';
+                if (!senderErrorDetails) {
+                    senderErrorDetails = senderError.message;
+                }
             }
         } else {
-            console.warn('Sender.net environment variables not set. Skipping Sender.net integration.');
+            console.warn('Sender.net API token not set. Skipping Sender.net integration.');
+            senderStatus = 'skipped';
         }
+
+        // 2. Send Notification Email via Resend with Sender.net status
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        let emailContent = `
+      New Newsletter Signup:
+
+      First Name: ${firstName}
+      Last Name: ${lastName}
+      Email: ${email}
+
+      Date: ${new Date().toLocaleString()}
+
+      Sender.net Status: ${senderStatus}`;
+
+        if (senderStatus === 'failed') {
+            emailContent += `
+
+      ⚠️ ACTION REQUIRED: Failed to add subscriber to Sender.net
+      Please manually add this subscriber to your Sender.net list.
+
+      Error Details: ${senderErrorDetails}`;
+        } else if (senderStatus === 'already_exists') {
+            emailContent += `
+
+      Note: This email already exists in Sender.net.`;
+        }
+
+        await resend.emails.send({
+            from: 'contact@send.ibuildwith.ai',
+            to: process.env.RECIPIENT_EMAIL,
+            subject: senderStatus === 'failed'
+                ? `⚠️ Newsletter Signup - MANUAL ADD REQUIRED - ${firstName} ${lastName}`
+                : `New Newsletter Signup from ${firstName} ${lastName}`,
+            text: emailContent,
+        });
 
         return {
             statusCode: 200,
