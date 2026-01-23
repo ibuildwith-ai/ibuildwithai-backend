@@ -105,6 +105,57 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // Add to Sender.net and track status
+    let senderStatus = 'success';
+    let senderErrorDetails = '';
+
+    if (process.env.SENDER_API_TOKEN) {
+      try {
+        console.log(`[REMINDER-FORM] Adding ${email} to Sender.net`);
+        const addSubscriberResponse = await fetch('https://api.sender.net/v2/subscribers', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.SENDER_API_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            email: email,
+            firstname: firstName,
+            lastname: lastName
+          }),
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+
+        const subscriberData = await addSubscriberResponse.json();
+
+        if (!addSubscriberResponse.ok) {
+          // Check if subscriber already exists
+          if (addSubscriberResponse.status === 422 ||
+              (subscriberData.message && subscriberData.message.includes('already exists'))) {
+            console.log(`[REMINDER-FORM] Email ${email} is already subscribed to Sender.net.`);
+            senderStatus = 'already_exists';
+          } else {
+            senderStatus = 'failed';
+            senderErrorDetails = `Status: ${addSubscriberResponse.status}, Message: ${subscriberData.message || addSubscriberResponse.statusText}`;
+            console.error(`[REMINDER-FORM] Sender.net API error: ${subscriberData.message || addSubscriberResponse.statusText}`);
+          }
+        } else {
+          console.log(`[REMINDER-FORM] Successfully added ${email} to Sender.net`);
+          senderStatus = 'success';
+        }
+      } catch (senderError) {
+        console.error('[REMINDER-FORM] Sender.net Error:', senderError);
+        senderStatus = 'failed';
+        if (!senderErrorDetails) {
+          senderErrorDetails = senderError.message;
+        }
+      }
+    } else {
+      console.warn('[REMINDER-FORM] Sender.net API token not set. Skipping Sender.net integration.');
+      senderStatus = 'skipped';
+    }
+
     // Initialize Resend
     const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -119,9 +170,9 @@ exports.handler = async (event, context) => {
       second: '2-digit'
     });
 
-    // Prepare email content for user (with admin BCC)
-    const emailSubject = 'Your iBuildWith.ai reminder is set!';
-    const emailContent = `Hi ${firstName},
+    // Prepare email content for user
+    const userEmailSubject = 'Your iBuildWith.ai reminder is set!';
+    const userEmailContent = `Hi ${firstName},
 
 Your reminder is set! Here are the details:
 
@@ -135,15 +186,43 @@ ${pageUrl || 'Page URL not available'}
 
 Learn more at iBuildWith.ai`;
 
+    // Prepare admin notification email with Sender.net status
+    let adminEmailContent = `
+New Podcast Reminder Request:
+
+First Name: ${firstName}
+Last Name: ${lastName}
+Email: ${email}
+
+Podcast Page:
+${(pageTitle || 'Page title not available').replace('| iBuildWith.ai', '').trim()}
+${pageUrl || 'Page URL not available'}
+
+Date: ${timestamp}
+
+Sender.net Status: ${senderStatus}`;
+
+    if (senderStatus === 'failed') {
+      adminEmailContent += `
+
+⚠️ ACTION REQUIRED: Failed to add subscriber to Sender.net
+Please manually add this subscriber to your Sender.net list.
+
+Error Details: ${senderErrorDetails}`;
+    } else if (senderStatus === 'already_exists') {
+      adminEmailContent += `
+
+Note: This email already exists in Sender.net.`;
+    }
+
     console.log(`[REMINDER-FORM] Sending reminder confirmation email to: ${email}`);
 
-    // Send email to user with BCC to admin
+    // Send email to user
     const { data, error } = await resend.emails.send({
       from: 'contact@send.ibuildwith.ai',
       to: [email],
-      bcc: [process.env.REMINDER_ADMIN_EMAIL],
-      subject: emailSubject,
-      text: emailContent
+      subject: userEmailSubject,
+      text: userEmailContent
     });
 
     if (error) {
@@ -157,7 +236,24 @@ Learn more at iBuildWith.ai`;
       };
     }
 
-    console.log('[REMINDER-FORM] Email sent successfully:', data);
+    console.log('[REMINDER-FORM] User confirmation email sent successfully:', data);
+
+    // Send separate admin notification with Sender.net status
+    try {
+      await resend.emails.send({
+        from: 'contact@send.ibuildwith.ai',
+        to: [process.env.REMINDER_ADMIN_EMAIL],
+        subject: senderStatus === 'failed'
+          ? `⚠️ Podcast Reminder - MANUAL ADD REQUIRED - ${firstName} ${lastName}`
+          : `New Podcast Reminder from ${firstName} ${lastName}`,
+        text: adminEmailContent
+      });
+      console.log('[REMINDER-FORM] Admin notification sent successfully');
+    } catch (adminEmailError) {
+      console.error('[REMINDER-FORM] Admin notification email error:', adminEmailError);
+      // Don't fail the request if admin notification fails
+    }
+
     console.log(`[REMINDER-FORM] Reminder set for ${firstName} ${lastName} (${email}) on page: ${pageTitle}`);
 
     // Return success response
