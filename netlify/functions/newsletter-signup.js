@@ -44,11 +44,15 @@ exports.handler = async (event, context) => {
         };
     }
 
-    // Rate Limiting
+    // Check for trusted API key (e.g., VAPI voice agent)
+    const apiKey = event.headers['x-api-key'];
+    const isTrustedCaller = apiKey && apiKey === process.env.VAPI_API_KEY;
+
+    // Rate Limiting (skip for trusted callers)
     const clientIp = event.headers['client-ip'] || event.headers['x-forwarded-for'] || 'unknown';
     const now = Date.now();
 
-    if (clientIp !== 'unknown') {
+    if (!isTrustedCaller && clientIp !== 'unknown') {
         const requestData = ipRequestMap.get(clientIp) || { count: 0, startTime: now };
 
         if (now - requestData.startTime > RATE_LIMIT_WINDOW) {

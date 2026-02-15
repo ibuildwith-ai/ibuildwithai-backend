@@ -35,32 +35,38 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // Rate limiting by IP
+    // Check for trusted API key (e.g., VAPI voice agent)
+    const apiKey = event.headers['x-api-key'];
+    const isTrustedCaller = apiKey && apiKey === process.env.VAPI_API_KEY;
+
+    // Rate limiting by IP (skip for trusted callers)
     const clientIP = event.headers['client-ip'] || event.headers['x-forwarded-for'] || 'unknown';
     const now = Date.now();
     const windowMs = 60 * 60 * 1000; // 1 hour
     const maxRequests = 3; // Reduced from 5 for better security
 
-    if (rateLimitStore.has(clientIP)) {
-      const { count, firstRequest } = rateLimitStore.get(clientIP);
+    if (!isTrustedCaller) {
+      if (rateLimitStore.has(clientIP)) {
+        const { count, firstRequest } = rateLimitStore.get(clientIP);
 
-      if (now - firstRequest < windowMs) {
-        if (count >= maxRequests) {
-          return {
-            statusCode: 429,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              error: 'Too many requests. Please wait before submitting again.'
-            })
-          };
+        if (now - firstRequest < windowMs) {
+          if (count >= maxRequests) {
+            return {
+              statusCode: 429,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                error: 'Too many requests. Please wait before submitting again.'
+              })
+            };
+          }
+          rateLimitStore.set(clientIP, { count: count + 1, firstRequest });
+        } else {
+          // Reset the window
+          rateLimitStore.set(clientIP, { count: 1, firstRequest: now });
         }
-        rateLimitStore.set(clientIP, { count: count + 1, firstRequest });
       } else {
-        // Reset the window
         rateLimitStore.set(clientIP, { count: 1, firstRequest: now });
       }
-    } else {
-      rateLimitStore.set(clientIP, { count: 1, firstRequest: now });
     }
 
     // Parse form data
